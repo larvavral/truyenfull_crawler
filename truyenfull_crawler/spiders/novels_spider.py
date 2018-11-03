@@ -4,6 +4,7 @@ from scrapy import signals
 import json
 import requests
 from lxml import html
+from lxml import etree
 
 url = 'https://truyenfull.vn/danh-sach/truyen-moi/'
 
@@ -44,12 +45,87 @@ class NovelsSpider(scrapy.Spider):
         if response.status == 200:
             body = html.fromstring(response.text)
 
+            # Get title, cover image, url in this page.
             titles = body.xpath('//h3[contains(@class, "truyen-title")]/a/text()')
             urls = body.xpath('//h3[contains(@class, "truyen-title")]/a/@href')
-            cover_images = body.xpath('//img[contains(@class, "cover")]/@src')
-            for t, s in (zip(titles, urls)):
+            cover_images = body.xpath('//div[contains(@class, "list-truyen")]//div[@data-classname="cover"]/@data-image')
+
+            # text_infos save latest chapter of a novel.
+            text_infos = []
+            tex_info_nodes = body.xpath('//div[contains(@class, "text-info")]/div/a')
+            for list_element in tex_info_nodes:
+                texts = list_element.xpath('.//text()')
+                text_infos.append("".join(texts))
+
+            # Go to page of each novel to get other information.
+            images = []
+            authors = []
+            categories = []
+            sources = []
+            status = []
+            rates = []
+            descriptions = []
+            for url in urls:
+                # Load html content of a novel.
+                res = requests.get(url)
+                while res.status_code != 200:
+                    res = requests.get(url)
+                page_content = html.fromstring(res.content)
+
+                # Extract information.
+                image = page_content.xpath('//div[contains(@class, "book")]/img/@src')
+                if (len(image) > 0):
+                    images.append(image)
+                else:
+                    images.append("")
+
+                author = page_content.xpath('//a[contains(@itemprop, "author")]/text()')
+                if (len(author) > 0):
+                    authors.append(author[0])
+                else:
+                    authors.append("")
+
+                category = ", ".join(page_content.xpath('//a[contains(@itemprop, "genre")]/text()'))
+                categories.append(category)
+
+                source = page_content.xpath('//span[contains(@class, "source")]/text()')
+                if (len(source) > 0):
+                    sources.append(source[0])
+                else:
+                    sources.append("")
+
+                stat = page_content.xpath('//span[contains(@class, "text-primary") or contains(@class, "text-success")]/text()')
+                if (len(stat) > 0):
+                    status.append(stat[0])
+                else:
+                    status.append("")
+
+                rate = page_content.xpath('//div[contains(@class, "rate-holder")]/@data-score')[0]
+                rates.append(rate)
+
+                desc = page_content.xpath('//div[contains(@class, "desc-text")]')
+                description_text = ""
+                if (len(desc) > 0):
+                    for element in desc[0]:
+                        description_text += etree.tostring(element, encoding='unicode')
+                descriptions.append(description_text)
+
+            for title, url, cover_image, text_info, image, author, category, source, stat, rate, desc in (zip(titles, urls, cover_images, text_infos, images, authors, categories, sources, status, rates, descriptions)):
                 self.count += 1
-                self.novels_list.append({ "index": self.count, "title" : t, "url" : s })
+                self.novels_list.append({ 
+                    "index": self.count, 
+                    "title": title, 
+                    "url": url,
+                    "cover_image": cover_image,
+                    "text_info": text_info,
+                    "image": image,
+                    "author": author,
+                    "category": category,
+                    "source": source,
+                    "status": stat,
+                    "rate": rate,
+                    "description": desc
+                })
 
             self.page_crawled += 1
             if self.page_crawled == self.max_page:

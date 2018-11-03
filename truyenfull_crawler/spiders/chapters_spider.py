@@ -49,15 +49,18 @@ class ChaptersSpider(scrapy.Spider):
             for url in chapter_urls:
                 index += 1
                 print(url)
-                # path = os.path.basename(os.path.normpath(url))
-                path = urlparse.urlparse(url).path
-                print(path)
+                # path = urlparse.urlparse(url).path
+                for x in url.split('/'):
+                    if x != "":
+                        path = x
+                # print(path)
 
                 # Send request to "truyenfull.vn" server to get pages.
                 # Retry until request succeed.
                 res = requests.get(url)
                 while res.status_code != 200:
                     res = requests.get(url)
+                    sleep(0.2)
                 page_content = html.fromstring(res.content)
 
                 text = page_content.xpath('//a[contains(@class, "chapter-title")]/descendant::text()')
@@ -109,9 +112,11 @@ class ChaptersSpider(scrapy.Spider):
         # Recursive next page.
         next_page_url = body.xpath('//ul[contains(@class, "pagination")]/li[last()]/a/@href')
         if len(next_page_url) > 0:
+            print(next_page_url[0])
             res = requests.get(next_page_url[0])
             while res.status_code != 200:
                 res = requests.get(next_page_url[0])
+                sleep(0.2)
 
             self.get_chapter_url(html.fromstring(res.content), chapter_urls)
 
